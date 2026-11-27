@@ -14,6 +14,7 @@ the test suite and are not shipped in the wheels or the source distribution.
 | `xml/*.xml` | The MusicXML test suite distributed with LilyPond (`input/regression/musicxml/`) | Upstream terms |
 | `midi/*.midi` | Rendered from the `ly/` scores of the same name | As the source score |
 | `abc/*.abc` | Written for lytk's tests | MIT, as lytk |
+| `ly/marks-on-rests.ly` | Written for lytk's tests | MIT, as lytk |
 | `ly/<uuid>.ly`, `mxl/*.mxl`, `musicxml/*.mxl` | Provenance not recorded | Treat as the original authors' |
 
 When adding a fixture, record its source and terms here.

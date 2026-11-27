@@ -39,9 +39,10 @@ fn note_or_pitched_rest(note: Note, attachments: &[String]) -> VoiceElement {
         rest.display_octave = Some(note.pitch.octave);
         rest.voice = note.voice;
         rest.staff = note.staff;
-        // Copy any dynamics/wedges from note
+        // Copy any dynamics/wedges/text from note
         rest.dynamics = note.dynamics.clone();
         rest.wedges = note.wedges.clone();
+        rest.text_directions = note.text_directions.clone();
         VoiceElement::Rest(rest)
     } else {
         VoiceElement::Note(Box::new(note))
@@ -419,7 +420,6 @@ fn handle_symbol(state: &mut WalkState, children: &[Node], i: usize, sym: &str) 
                         }
                         let mut rest = Rest::new(dur.clone());
                         rest.is_spacer = true;
-                        apply_rest_attachments(&mut rest, &attachments);
                         state.push_voice_element(VoiceElement::Rest(rest));
                     }
                 }

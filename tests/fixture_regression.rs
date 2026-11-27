@@ -491,6 +491,7 @@ ly_fixture_test!(ly_key_signature_left, "key-signature-left-edge.ly");
 ly_fixture_test!(ly_key_signature_padding, "key-signature-padding.ly");
 ly_fixture_test!(ly_lyric_tie, "lyric-tie.ly");
 ly_fixture_test!(ly_make_relative_copies, "make-relative-copies.ly");
+ly_fixture_test!(ly_marks_on_rests, "marks-on-rests.ly");
 ly_fixture_test!(ly_note_head_style, "note-head-style.ly");
 ly_fixture_test!(ly_part_combine_tuplet, "part-combine-tuplet-end.ly");
 ly_fixture_test!(ly_pedal, "pedal.ly");

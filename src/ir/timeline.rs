@@ -300,6 +300,16 @@ impl Timeline {
                             }),
                         ));
                     }
+                    for text in r.text_directions {
+                        self.events.push((
+                            on,
+                            Event::direction(Direction {
+                                placement: text.placement,
+                                text: Some(text),
+                                ..Default::default()
+                            }),
+                        ));
+                    }
                 }
             }
         }

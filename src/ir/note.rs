@@ -263,6 +263,8 @@ pub struct Rest {
     pub(crate) dynamics: Vec<DynamicMark>,
     #[serde(skip)]
     pub(crate) wedges: Vec<Wedge>,
+    #[serde(skip)]
+    pub(crate) text_directions: Vec<super::direction::TextDirection>,
 }
 
 impl Rest {
@@ -279,6 +281,7 @@ impl Rest {
             tuplet: None,
             dynamics: Vec::new(),
             wedges: Vec::new(),
+            text_directions: Vec::new(),
         }
     }
 

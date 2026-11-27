@@ -37,7 +37,7 @@ fn hoist_measure(m: &mut Measure) {
                 VoiceElement::Rest(r) => (
                     std::mem::take(&mut r.dynamics),
                     std::mem::take(&mut r.wedges),
-                    Vec::new(),
+                    std::mem::take(&mut r.text_directions),
                 ),
                 _ => {
                     let (mut d, mut w, mut t) = (Vec::new(), Vec::new(), Vec::new());
@@ -125,9 +125,8 @@ fn sink_one(m: &mut Measure, d: Direction) -> Option<Direction> {
                 r.dynamics.push(dy);
             } else if let Some(w) = d.wedge {
                 r.wedges.push(w);
-            } else {
-                // A rest carries no text.
-                return Some(d);
+            } else if let Some(t) = d.text {
+                r.text_directions.push(t);
             }
         }
         e => {
@@ -200,7 +199,9 @@ mod tests {
             .expect("reads");
         let m = &score.parts()[0].measures[0];
         let bare = m.voices.iter().flat_map(|v| &v.elements).all(|e| match e {
-            VoiceElement::Rest(r) => r.dynamics.is_empty() && r.wedges.is_empty(),
+            VoiceElement::Rest(r) => {
+                r.dynamics.is_empty() && r.wedges.is_empty() && r.text_directions.is_empty()
+            }
             e => e.notes().iter().all(|n| {
                 n.dynamics.is_empty() && n.wedges.is_empty() && n.text_directions.is_empty()
             }),
