@@ -1475,6 +1475,45 @@ forma = { \time 4/4 \key c\major s1*3 }
         assert_eq!(notes[1].lyrics[0].text, "es");
     }
 
+    /// The MusicXML of `src`, from the first `<backup>` on.
+    fn mxml_after_backup(src: &str) -> String {
+        use crate::adapters::ir_to_mxml::IrToMxmlAdapter;
+        use crate::adapters::FromIrAdapter;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let xml = IrToMxmlAdapter::new().convert(&score).unwrap();
+        xml[xml.find("<backup>").expect("two voices")..].to_string()
+    }
+
+    #[test]
+    fn test_spacer_mark_is_written_at_its_start() {
+        // `s2\p`: the p is at beat 1, so it comes before the <forward>
+        // that skips the half note, not after it at beat 3.
+        let xml = mxml_after_backup(r#"{ << { c''4 c'' c'' c'' } \\ { s2\p c'2 } >> }"#);
+        let p = xml
+            .find("<p/>")
+            .or_else(|| xml.find("<p>"))
+            .expect("p written");
+        let fwd = xml.find("<forward>").expect("spacer written as <forward>");
+        assert!(p < fwd, "p after the spacer: {xml}");
+    }
+
+    #[test]
+    fn test_anchored_spacer_mark_is_written_at_its_start() {
+        // A staff of spacers hosting a direction writes them as hidden rests;
+        // the spacer's own mark still goes before its rest.
+        let src = r#"\new PianoStaff << \new Staff { c''1 | c''1 } \new Staff { \clef bass c1 | s2\p\sustainOn s2\sustainOff } >>"#;
+        use crate::adapters::ir_to_mxml::IrToMxmlAdapter;
+        use crate::adapters::FromIrAdapter;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let xml = IrToMxmlAdapter::new().convert(&score).unwrap();
+        let hidden = xml.find("print-object=\"no\"").expect("hidden rest");
+        let p = xml
+            .find("<p/>")
+            .or_else(|| xml.find("<p>"))
+            .expect("p written");
+        assert!(p < hidden, "p after its hidden rest: {xml}");
+    }
+
     #[test]
     fn test_marks_on_rests_are_directions() {
         // A rest's post-events are marks like a note's: `r8\f`, `r16-\f`,

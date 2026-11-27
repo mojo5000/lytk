@@ -328,14 +328,17 @@ impl IrToMxmlAdapter {
                             // Empty staff measure that must host a direction:
                             // emit an invisible rest so the direction anchors to
                             // this staff (see `anchor_spacers_as_rests` above).
+                            // Its marks first: they belong at its start.
+                            elements.extend(self.rest_direction_elements(r));
                             let dur_val = self.duration_to_divisions(&r.duration);
                             let mut rest_note = self.build_rest_note(r, voice.number, part_staves);
                             rest_note.attributes.print_object = Some(mdt::YesNo::No);
                             elements.push(mxml::MeasureElement::Note(rest_note));
                             fwd_pos += dur_val;
-                            elements.extend(self.rest_direction_elements(r));
                         } else if r.is_spacer {
-                            // Emit spacer rests as MusicXML <forward>
+                            // Emit dynamics/wedges attached to this spacer rest,
+                            // at its start, then the spacer as a MusicXML <forward>.
+                            elements.extend(self.rest_direction_elements(r));
                             let dur_val = self.duration_to_divisions(&r.duration);
                             let mut fwd_content = mxml::ForwardContents {
                                 duration: mxml::Duration {
@@ -361,8 +364,6 @@ impl IrToMxmlAdapter {
                                 content: fwd_content,
                             }));
                             fwd_pos += dur_val;
-                            // Emit dynamics/wedges attached to this spacer rest.
-                            elements.extend(self.rest_direction_elements(r));
                         } else {
                             // Emit dynamics/wedges/text attached to this rest.
                             elements.extend(self.rest_direction_elements(r));

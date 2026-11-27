@@ -3,6 +3,24 @@
 Dated engineering notes, newest first. The release history is in
 [changelog.md](changelog.md).
 
+## 2026-11-27 — A spacer's marks at its start
+
+`s2\p` in a second voice wrote its `p` on beat 3. The MusicXML writer
+emits a spacer as a `<forward>`, or as a hidden rest when its staff has
+nothing else to hang a direction on (`anchor_spacers_as_rests`), and in
+both branches pushed the spacer first and `rest_direction_elements`
+after it, at its end. A rest's own branch already emits them first.
+Both spacer branches do now.
+
+**Checked against a corpus.** Mutopia (5,655 `.ly` files) and LilyPond's
+`input/regression` (2,211) were converted with 0.6.5 and with this
+change. 16,866 of 16,866 outputs are identical with their
+`<direction>`s taken out, and every file converts, warns and fails as
+before. 4,464 directions moved, in 580 outputs (2,794 hairpins, 1,670
+dynamics), every one from a spacer's end to that spacer's start (or
+across spacers back to back, where identical marks swap places), and
+none was added or lost.
+
 ## 2026-11-27 — A rest's marks
 
 Mutopia's Maple Leaf Rag (Joplin, Mutopia-2011/11/13-23) converted to
@@ -55,7 +73,7 @@ markup's `\dynamic f` reads as the text "f stacc.", not as a dynamic;
 a markup without braces (`\markup\italic "…"`) and one of glyphs only
 read as nothing, on a note as on a rest; `ir_to_ly` drops a rest's
 marks; and a spacer's marks are written after its `<forward>`, so
-`s2\p` sounds on beat 3, as before.
+`s2\p` sounds on beat 3, as before (fixed in the entry above).
 
 ## 2026-11-27 — 0.6.5: what LilyPond's own MIDI of Mutopia's scores showed
 
