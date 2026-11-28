@@ -15,6 +15,10 @@ engineering notes are in the [development log](devlog.md).
   a note's are (Joplin's Maple Leaf Rag on Mutopia lost five of its
   seven dynamics this way). A pitched rest (`c4\rest`) keeps its text
   too, and a rest's text is written beside it in MusicXML, on its staff.
+- A spacer's dynamics and hairpins are written at its start in MusicXML,
+  not after it: `s2\p` under a voice of quarter notes was a `p` on beat
+  3 (the MusicXML writer emitted a spacer's marks after its `<forward>`
+  or hidden rest).
 
 ## [0.6.5] - 2026-11-27
 
