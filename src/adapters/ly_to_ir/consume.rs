@@ -946,6 +946,13 @@ pub(super) fn parse_fraction(text: &str) -> Option<(u32, u32)> {
 /// Parse `#(ly:make-moment N D)` from a Scheme expression text.
 /// Returns (numerator, denominator) if successful, a zero denominator included.
 pub(super) fn parse_ly_make_moment(text: &str) -> Option<(u32, u32)> {
+    let (num, den) = parse_ly_make_moment_signed(text)?;
+    Some((u32::try_from(num).ok()?, den))
+}
+
+/// [`parse_ly_make_moment`] with a sign: `#(ly:make-moment -1/8)` or
+/// `#(ly:make-moment -1 8)`, as a `measurePosition` may be.
+pub(super) fn parse_ly_make_moment_signed(text: &str) -> Option<(i64, u32)> {
     // Text looks like: #(ly:make-moment 3 4) or #(ly:make-moment 3/4)
     let inner = text.trim_start_matches('#').trim();
     let inner = inner.strip_prefix('(')?.strip_suffix(')')?;
@@ -954,18 +961,20 @@ pub(super) fn parse_ly_make_moment(text: &str) -> Option<(u32, u32)> {
         return None;
     }
     let args = inner.strip_prefix("ly:make-moment")?.trim();
+    let (negative, args) = match args.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, args),
+    };
     // Try "N D" format first
     let parts: Vec<&str> = args.split_whitespace().collect();
-    if parts.len() == 2 {
-        let num = parts[0].parse::<u32>().ok()?;
-        let den = parts[1].parse::<u32>().ok()?;
-        return Some((num, den));
-    }
-    // Try "N/D" format
-    if let Some((num, den)) = parse_fraction(args) {
-        return Some((num, den));
-    }
-    None
+    let (num, den) = if parts.len() == 2 {
+        (parts[0].parse::<u32>().ok()?, parts[1].parse::<u32>().ok()?)
+    } else {
+        // Try "N/D" format
+        parse_fraction(args)?
+    };
+    let num = i64::from(num);
+    Some((if negative { -num } else { num }, den))
 }
 
 /// The string of a Scheme string literal like `#"flute"`, escapes decoded;

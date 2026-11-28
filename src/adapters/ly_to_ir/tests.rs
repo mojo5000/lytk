@@ -4370,3 +4370,181 @@ mod mutopia_reading {
         assert_eq!(pitches(src), [72, 74, 76, 77]); // written pitches; MIDI sounds them an octave down
     }
 }
+
+/// `\set Timing.measurePosition`: where the bar in progress stands, which
+/// moves the bar lines after it, as `\partial` does.
+mod measure_position {
+    use crate::adapters::ly_to_ir::LyToIrAdapter;
+    use crate::adapters::ToIrAdapter;
+    use crate::ir::duration::Frac;
+    use crate::ir::note::VoiceElement;
+    use crate::ir::score::Score;
+
+    fn read(src: &str) -> Score {
+        LyToIrAdapter::new().convert_str(src).expect("reads")
+    }
+
+    /// Each bar of the first part: its longest voice's length.
+    fn bar_lengths(score: &Score) -> Vec<Frac> {
+        score.parts()[0]
+            .measures
+            .iter()
+            .map(|m| {
+                m.voices
+                    .iter()
+                    .map(|v| {
+                        v.elements
+                            .iter()
+                            .map(VoiceElement::metric_duration)
+                            .sum::<Frac>()
+                    })
+                    .max()
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// Each bar of the first part: each staff's end, from its longest voice.
+    fn staff_ends(score: &Score) -> Vec<Vec<Frac>> {
+        let part = &score.parts()[0];
+        part.measures
+            .iter()
+            .map(|m| {
+                (1..=part.staves.max(1))
+                    .map(|staff| {
+                        m.voices
+                            .iter()
+                            .filter(|v| v.elements.first().is_some_and(|e| e.staff() == staff))
+                            .map(|v| {
+                                v.elements
+                                    .iter()
+                                    .map(VoiceElement::metric_duration)
+                                    .sum::<Frac>()
+                            })
+                            .max()
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn q(n: i64, d: i64) -> Frac {
+        Frac::new(n, d)
+    }
+
+    #[test]
+    fn a_negative_position_leaves_that_much_of_the_bar() {
+        // `-1/4` after one beat of 3/4: one beat left, so the bar is two.
+        let s = read(
+            r"{ \time 3/4 c'4 \set Timing.measurePosition = #(ly:make-moment -1/4) d'4 | e'2. }",
+        );
+        assert_eq!(bar_lengths(&s), vec![q(1, 2), q(3, 4)]);
+        // The same in the two-number form, set in the Score context.
+        let s = read(
+            r"{ \time 3/4 c'4 \set Score.measurePosition = #(ly:make-moment -1 4) d'4 | e'2. }",
+        );
+        assert_eq!(bar_lengths(&s), vec![q(1, 2), q(3, 4)]);
+    }
+
+    #[test]
+    fn a_positive_position_is_how_far_into_the_bar() {
+        // `3/4` after one beat of 4/4: the bar has one beat left.
+        let s =
+            read(r"{ \time 4/4 c'4 \set Score.measurePosition = #(ly:make-moment 3 4) d'4 | e'1 }");
+        assert_eq!(bar_lengths(&s), vec![q(1, 2), q(1, 1)]);
+    }
+
+    #[test]
+    fn a_zero_position_starts_a_bar() {
+        let s = read(r"{ \time 3/4 c'4 \set Timing.measurePosition = #(ly:make-moment 0/4) d'2. }");
+        assert_eq!(bar_lengths(&s), vec![q(1, 4), q(3, 4)]);
+    }
+
+    #[test]
+    fn a_position_at_the_start_is_a_pickup() {
+        let s =
+            read(r"{ \time 3/4 \set Timing.measurePosition = #(ly:make-moment -1/4) c'4 | d'2. }");
+        assert_eq!(bar_lengths(&s), vec![q(1, 4), q(3, 4)]);
+        assert!(
+            s.parts()[0].measures[0].implicit,
+            "the pickup is not counted"
+        );
+    }
+
+    #[test]
+    fn a_position_out_of_reach_is_read_without_a_panic() {
+        for moment in [
+            "1 0",
+            "-1/0",
+            "4294967295 1",
+            "-4294967295 1",
+            "1 4294967295",
+            "4294967295 4294967291",
+            "-4294967295 4294967291",
+        ] {
+            let src = format!(
+                r"{{ \time 3/4 c'4 \set Timing.measurePosition = #(ly:make-moment {moment}) d'4 e'2. f'2. }}"
+            );
+            let score = read(&src);
+            assert!(!score.parts()[0].measures.is_empty(), "{src}");
+        }
+        // A large denominator in the position and in the music before it:
+        // the grid's arithmetic overflowed before the position was bounded.
+        let src = r"{ \time 4294967279/4 c'4*1/4294967273 \set Timing.measurePosition = #(ly:make-moment 1 4294967291) d'4 e'2. }";
+        let _ = LyToIrAdapter::new().convert_str(src);
+    }
+
+    #[test]
+    fn a_bar_line_out_of_reach_is_left_out_without_a_panic() {
+        // Odd denominators just inside the reader's limits, in the meter, a
+        // tuplet, a scaled note and the bar line: the grid's sums passed
+        // `i64`, and `\partial` panicked as the position did.
+        for bar_line in [
+            r"\partial 4*1/16777213",
+            r"\set Timing.measurePosition = #(ly:make-moment 1 16777213)",
+            r"\set Timing.measurePosition = #(ly:make-moment -1 16777213)",
+            r"\set Timing.measurePosition = #(ly:make-moment 16777215 16777216)",
+        ] {
+            let src = format!(
+                r"{{ \time 16777213/4 \tuplet 16777201/4 {{ c'4*1/16777199 }} {bar_line} d'4 {bar_line} e'2. }}"
+            );
+            let _ = LyToIrAdapter::new().convert_str(&src);
+        }
+    }
+
+    #[test]
+    fn a_second_ending_that_sets_the_position_keeps_the_staves_in_line() {
+        // Mutopia's Für Elise (Beethoven, WoO 59, Mutopia-2015/08/18-931),
+        // cut down: the second ending runs across a hidden bar line and
+        // sets the position so the next section starts on a bar line. The
+        // hands were out of line from there on.
+        let s = read(
+            r#"\new PianoStaff <<
+  \new Staff \relative c'' {
+    \time 3/8
+    \repeat volta 2 { \partial 8 e16 dis | e16 b d c a8 }
+    \alternative { { a4 } { a8 \bar "" r16 b \set Timing.measurePosition = #(ly:make-moment -1/8) c16 d } }
+    e8. g,16 f' e | d4.
+  }
+  \new Staff \relative c {
+    \clef bass \time 3/8
+    \repeat volta 2 { \partial 8 r8 | a16 e' a r r8 }
+    \alternative { { a,16 e' a r } { a,16[ e' \bar "" a16] r \set Timing.measurePosition = #(ly:make-moment -1/8) r8 } }
+    c,16 g' c r r8 | g,16 g' b r r8
+  }
+>>"#,
+        );
+        let ends = staff_ends(&s);
+        for (i, bar) in ends.iter().enumerate() {
+            assert!(
+                bar.windows(2).all(|w| w[0] == w[1]),
+                "bar {i}'s staves end at {bar:?}: {ends:?}"
+            );
+        }
+        // The section after the ending starts on a bar line: its two bars
+        // are whole.
+        let lengths = bar_lengths(&s);
+        assert_eq!(lengths[lengths.len() - 2..], [q(3, 8), q(3, 8)]);
+    }
+}

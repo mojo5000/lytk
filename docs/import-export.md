@@ -206,7 +206,7 @@ Numbers as of 0.5.0.
 | Glissando | ✅ | `\glissando` with style override |
 | Arpeggio | ✅ | `\arpeggio` with direction |
 | Slide | ✅ | Via glissando trill style |
-| Anacrusis | ✅ | `\partial` |
+| Anacrusis | ✅ | `\partial`, and `\set Timing.measurePosition` (or `Score.`) anywhere, a negative position as `\partial` |
 | Paper block | ✅ | `\paper { }` → page layout |
 | Tokens | ✅ | `lytk.tokenize` (the tree's leaves; strings and comments whole; embedded Scheme as Scheme tokens; nothing but whitespace lost) and `lytk.strip_comments` |
 | `\version` | ✅ | `Score.lilypond_version` (every movement's); `lytk.lilypond_version`, `set_lilypond_version`, `strip_lilypond_version` read and edit it on the tree; an invalid one is `invalid-version` |
