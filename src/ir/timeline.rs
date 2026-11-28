@@ -49,6 +49,9 @@ pub(crate) enum Event {
     CadenzaOff,
     /// `\partial d`: the bar in progress here has only `d` left.
     Partial(Frac),
+    /// `\set Timing.measurePosition = m`: the bar in progress here started
+    /// `m` ago, or for a negative `m` has only `-m` left (as `\partial -m`).
+    MeasurePosition(Frac),
 }
 
 /// Positioned content of one part (or of a variable, relative to 0).
@@ -417,6 +420,8 @@ enum Ctl {
     CadenzaOff,
     Time(Frac, Option<TimeSignature>),
     Partial(Frac),
+    /// How far into its bar this is (see [`Event::MeasurePosition`]).
+    Position(Frac),
     CadenzaOn,
     Barline,
 }
@@ -426,7 +431,7 @@ impl Ctl {
         match self {
             Ctl::CadenzaOff => 0,
             Ctl::Time(..) => 1,
-            Ctl::Partial(_) => 2,
+            Ctl::Partial(_) | Ctl::Position(_) => 2,
             Ctl::CadenzaOn => 3,
             Ctl::Barline => 4,
         }
@@ -456,7 +461,10 @@ impl Grid {
             end = end.max(tl.end());
             let onsets = tl.lanes.values().flat_map(|l| l.iter().map(|(on, _)| *on));
             let openers = tl.events.iter().filter_map(|(p, ev)| match ev {
-                Event::RightBarline(_) | Event::CadenzaOff | Event::Partial(_) => None,
+                Event::RightBarline(_)
+                | Event::CadenzaOff
+                | Event::Partial(_)
+                | Event::MeasurePosition(_) => None,
                 Event::Direction(d) if d.layout_break.is_some() => None,
                 _ => Some(*p),
             });
@@ -466,6 +474,7 @@ impl Grid {
                     Event::Time(ts) => Ctl::Time(ts.beats_fraction(), Some(ts.clone())),
                     Event::MeasureLength(len) => Ctl::Time(*len, None),
                     Event::Partial(d) => Ctl::Partial(*d),
+                    Event::MeasurePosition(m) => Ctl::Position(*m),
                     Event::CadenzaOn => Ctl::CadenzaOn,
                     Event::CadenzaOff => Ctl::CadenzaOff,
                     Event::LeftBarline(_) | Event::RightBarline(_) => Ctl::Barline,
@@ -483,23 +492,43 @@ impl Grid {
         let mut anchor = zero(); // a bar line falls here and every bar_len after
         let mut free_from: Option<Frac> = None;
         let mut pickup = false;
-        // Meter-grid bar lines in (from, to).
+        // Meter-grid bar lines in (from, to). A line out of `i64`'s reach
+        // (an anchor and a meter with large denominators) ends them rather
+        // than overflow.
         let grid_lines =
             |cuts: &mut Vec<Frac>, anchor: Frac, bar_len: Frac, from: Frac, to: Frac| {
                 if bar_len <= zero() {
                     return;
                 }
+                let next = |b: Frac| num::CheckedAdd::checked_add(&b, &bar_len);
                 let mut b = anchor;
                 if b <= from {
-                    let n = ((from - anchor) / bar_len).to_integer();
-                    b = anchor + bar_len * Frac::from_integer(n);
+                    let first = num::CheckedSub::checked_sub(&from, &anchor)
+                        .and_then(|gap| num::CheckedDiv::checked_div(&gap, &bar_len))
+                        .and_then(|bars| {
+                            num::CheckedMul::checked_mul(
+                                &bar_len,
+                                &Frac::from_integer(bars.to_integer()),
+                            )
+                        })
+                        .and_then(|span| num::CheckedAdd::checked_add(&anchor, &span));
+                    let Some(first) = first else {
+                        return;
+                    };
+                    b = first;
                     while b <= from {
-                        b += bar_len;
+                        let Some(n) = next(b) else {
+                            return;
+                        };
+                        b = n;
                     }
                 }
                 while b < to && cuts.len() <= MAX_BARS {
                     cuts.push(b);
-                    b += bar_len;
+                    let Some(n) = next(b) else {
+                        return;
+                    };
+                    b = n;
                 }
             };
 
@@ -528,11 +557,33 @@ impl Grid {
                     }
                 }
                 Ctl::Partial(d) => {
+                    let Some(line) = num::CheckedAdd::checked_add(&p, &d) else {
+                        continue;
+                    };
                     if p == zero() && d < bar_len {
                         pickup = true;
                     }
-                    anchor = p + d;
-                    cuts.push(p + d);
+                    anchor = line;
+                    cuts.push(line);
+                }
+                Ctl::Position(m) => {
+                    // A bar line fell at `p - m`, and falls every bar after;
+                    // one at or after `p` is drawn there.
+                    let Some(line) = num::CheckedSub::checked_sub(&p, &m) else {
+                        continue;
+                    };
+                    let left = if m <= zero() {
+                        Some(-m)
+                    } else {
+                        num::CheckedSub::checked_sub(&bar_len, &m)
+                    };
+                    if p == zero() && left.is_some_and(|l| l > zero() && l < bar_len) {
+                        pickup = true;
+                    }
+                    anchor = line;
+                    if m <= zero() {
+                        cuts.push(line);
+                    }
                 }
                 Ctl::CadenzaOn => {
                     if free_from.is_none() {
@@ -707,7 +758,11 @@ fn split_with(tl: Timeline, grid: &Grid, tie_over: bool) -> Vec<Measure> {
                 fb.offset = within;
                 measures[i].figured_bass.push(fb);
             }
-            Event::MeasureLength(_) | Event::CadenzaOn | Event::CadenzaOff | Event::Partial(_) => {}
+            Event::MeasureLength(_)
+            | Event::CadenzaOn
+            | Event::CadenzaOff
+            | Event::Partial(_)
+            | Event::MeasurePosition(_) => {}
         }
     }
 

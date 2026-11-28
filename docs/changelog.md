@@ -19,6 +19,15 @@ engineering notes are in the [development log](devlog.md).
   not after it: `s2\p` under a voice of quarter notes was a `p` on beat
   3 (the MusicXML writer emitted a spacer's marks after its `<forward>`
   or hidden rest).
+- `\set Timing.measurePosition` (or `Score.measurePosition`) is read: the
+  bar lines after it move, as after `\partial`, and a negative position
+  is `\partial`. It was ignored, so a second ending written across a
+  hidden bar line put a piano's hands out of line for the rest of the
+  piece (Beethoven's Für Elise on Mutopia, from bar 12), and a score
+  starting with it began with a full bar.
+- A `\partial` whose bar line falls out of `i64`'s reach (odd
+  denominators near the reader's limits in the meter and the music before
+  it) is dropped; it panicked.
 
 ## [0.6.5] - 2026-11-27
 

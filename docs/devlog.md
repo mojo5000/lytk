@@ -3,6 +3,61 @@
 Dated engineering notes, newest first. The release history is in
 [changelog.md](changelog.md).
 
+## 2026-11-28 — `\set Timing.measurePosition`
+
+Mutopia's Für Elise (Beethoven, WoO 59, Mutopia-2015/08/18-931) converted
+with its hands out of line from bar 12 to the end: 43 bars whose staves
+end at different beats. Its first second ending is
+`a'8 \bar "" r16 b' \set Timing.measurePosition = #(ly:make-moment -1/8) c''16 d''`:
+it starts where the first ending stopped, two eighths into a bar, runs
+across a hidden bar line, and sets the position so the next section
+starts on one. The reader dropped every `\set` it didn't name, this one
+too, so the grid kept its anchor; the repeat's bar line cut a bar where
+the source has none, and from there the grid cut the right hand's
+`e''8.` and not the left hand's sixteenths.
+
+- **The event.** `\set Timing.measurePosition` and
+  `\set Score.measurePosition` (any context, as LilyPond's `Timing` is
+  the score's) read `#(ly:make-moment …)` with a sign, in both forms
+  (`-1/8`, `-1 8`), as `Event::MeasurePosition(m)`. A zero denominator is
+  `invalid-ratio`, as for `measureLength`; a term above
+  `MAX_MULTIPLIER`, as a duration multiplier's, or another value is
+  `unsupported-value`, since the bars after it may be misplaced.
+  `parse_ly_make_moment`, which `measureLength` reads, is now
+  `parse_ly_make_moment_signed` with a negative refused.
+- **The grid.** `Grid::build_with` reads it as a bar line at `p - m`,
+  re-anchoring the meter there: a negative `m` is `\partial -m` (a bar
+  line at `p - m`, drawn), a positive one says the bar started `m` ago,
+  and the next line falls at `p - m + bar_len`. At the start, a bar it
+  leaves short is a pickup, as `\partial`'s is.
+- **No overflow.** The grid's sums are checked: a bar line out of
+  `i64`'s reach is left out, and a `\partial` or position whose bar line
+  is out of reach is dropped. Odd denominators just inside the reader's
+  limits (`\time 16777213/4`, `\tuplet 16777201/4 { c'4*1/16777199 }`,
+  then `\partial 4*1/16777213`) panicked in `p + d` and in the meter's
+  lines; `\partial` did so before this change, and the position would
+  have too.
+- **Only bar lines move.** Nothing else reads the event, so no note,
+  rest or mark changes position; the splitter only cuts the same
+  timelines elsewhere.
+
+**Checked against a corpus.** Mutopia (5,655 `.ly` files) and LilyPond's
+`input/regression` (2,211), converted with `dev` (`7426a4e`) and with
+this change on it:
+every file converts, warns and fails as before, and 73 of 16,866 outputs
+changed, every one from a source (or an `.ily` it includes) that sets
+the position; the other sources that set it convert as before. In 71 of the 73 every voice's notes and
+lengths, ties merged, are unchanged; in the other two (Dvořák's
+Seventh's scherzo, full score) a bar empty in one voice now has its
+whole-bar rest. Of the 73, 20 had a measure whose staves end at
+different beats before and 5 after, none new. Round-tripped LilyPond → LilyPond and compiled with LilyPond
+2.26, the 44 sources compile 44 times (43 before: Bach's
+`Ich_ruf_zu_dir2` crashed LilyPond).
+
+**Not changed.** `\bar ""` is an explicit bar line, so Für Elise's second
+ending is two short bars (an eighth, then a quarter) where LilyPond
+draws one across the hidden line; the staves agree on them.
+
 ## 2026-11-27 — A spacer's marks at its start
 
 `s2\p` in a second voice wrote its `p` on beat 3. The MusicXML writer

@@ -21,7 +21,8 @@ use super::consume::{
     consume_duration_scale, consume_mark, consume_octave_check, consume_octave_marks,
     consume_override, consume_tempo, consume_tremolo, extract_scheme_string, extract_string_value,
     grace_one, is_dynamic_name, mark_text, parse_fraction, parse_grace_block, parse_ly_make_moment,
-    parse_paper_block, previous, punct_text, skip_markup,
+    parse_ly_make_moment_signed, parse_paper_block, previous, punct_text, skip_markup,
+    MAX_MULTIPLIER,
 };
 use super::merge::apply_tuplet_display;
 use super::modifiers::{consume_relative, consume_repeat, consume_transpose};
@@ -1226,6 +1227,44 @@ pub(super) fn handle_escaped_word(
                                         state.add_event(Event::MeasureLength(len));
                                     }
                                     None => {}
+                                }
+                            } else if prop_text.contains("measurePosition") {
+                                // How far into the bar this is: the bar lines
+                                // after it move, as after `\partial`.
+                                match parse_ly_make_moment_signed(scheme_text) {
+                                    Some((_, 0)) => state.error(
+                                        *val_node,
+                                        "invalid-ratio",
+                                        "a measure position with a zero denominator: dropped"
+                                            .to_string(),
+                                    ),
+                                    // Bounded as a duration multiplier is,
+                                    // which keeps the grid's arithmetic far
+                                    // from `i64` overflow.
+                                    Some((num, den))
+                                        if den > MAX_MULTIPLIER
+                                            || num.unsigned_abs() > u64::from(MAX_MULTIPLIER) =>
+                                    {
+                                        state.warn(
+                                            *val_node,
+                                            "unsupported-value",
+                                            format!(
+                                                "a measure position with a term above \
+                                                 {MAX_MULTIPLIER}: dropped"
+                                            ),
+                                        )
+                                    }
+                                    Some((num, den)) => {
+                                        let at = Frac::new(num, i64::from(den));
+                                        state.add_event(Event::MeasurePosition(at));
+                                    }
+                                    None => state.warn(
+                                        *val_node,
+                                        "unsupported-value",
+                                        "a measure position other than `#(ly:make-moment …)`: \
+                                         dropped, so the bar lines after it may be misplaced"
+                                            .to_string(),
+                                    ),
                                 }
                             } else if let Some(s) = extract_scheme_string(scheme_text) {
                                 apply_set_property(state, &prop_text, &s);
