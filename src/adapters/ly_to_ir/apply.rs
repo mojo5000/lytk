@@ -249,13 +249,56 @@ pub(super) fn apply_note_attachments(
     }
 }
 
+/// A rest's marks: its fermata, dynamics, hairpins and text, placed by `^`/`_`
+/// as a note's are. Slurs, ties and beams on a rest are not read.
 pub(super) fn apply_rest_attachments(rest: &mut Rest, attachments: &[String]) {
-    for (k, att) in attachments.iter().enumerate() {
-        if att == "\\fermata" {
-            rest.fermata = Some(Fermata {
-                shape: FermataShape::Normal,
-                inverted: k > 0 && attachments[k - 1] == "_",
-            });
+    let mut placed = Placement::Unspecified;
+    for att in attachments {
+        let here = std::mem::replace(&mut placed, Placement::Unspecified);
+        match att.as_str() {
+            "^" => placed = Placement::Above,
+            "_" => placed = Placement::Below,
+            "\\fermata" => {
+                rest.fermata = Some(Fermata {
+                    shape: FermataShape::Normal,
+                    inverted: here == Placement::Below,
+                });
+            }
+            s if is_dynamic_name(s) || s.starts_with("dynamic:") => {
+                let sign = s.trim_start_matches("dynamic:").trim_start_matches('\\');
+                rest.dynamics.push(DynamicMark {
+                    sign: sign.into(),
+                    placement: here,
+                });
+            }
+            "\\<" | "\\crescendo" => rest.wedges.push(Wedge {
+                wedge_type: WedgeType::Crescendo,
+                placement: here,
+            }),
+            "\\>" | "\\diminuendo" | "\\decrescendo" => rest.wedges.push(Wedge {
+                wedge_type: WedgeType::Diminuendo,
+                placement: here,
+            }),
+            "\\!" => rest.wedges.push(Wedge {
+                wedge_type: WedgeType::Stop,
+                placement: here,
+            }),
+            s if s.starts_with("text:") => {
+                if let Some((placement, text)) = s["text:".len()..].split_once(':') {
+                    let placement = match placement {
+                        "above" => Placement::Above,
+                        "below" => Placement::Below,
+                        _ => Placement::Unspecified,
+                    };
+                    rest.text_directions.push(TextDirection {
+                        text: text.to_string(),
+                        placement,
+                        font_style: None,
+                        font_weight: None,
+                    });
+                }
+            }
+            _ => {}
         }
     }
 }

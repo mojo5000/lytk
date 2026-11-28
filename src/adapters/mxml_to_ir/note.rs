@@ -96,6 +96,7 @@ pub(super) fn convert_note(mxml_note: &mxml::Note, divisions: i64) -> Option<Not
             tuplet: None,
             dynamics: Vec::new(),
             wedges: Vec::new(),
+            text_directions: Vec::new(),
         };
 
         // Check notations for fermata and tuplet display

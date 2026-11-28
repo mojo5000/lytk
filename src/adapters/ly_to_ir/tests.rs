@@ -1476,6 +1476,141 @@ forma = { \time 4/4 \key c\major s1*3 }
     }
 
     #[test]
+    fn test_marks_on_rests_are_directions() {
+        // A rest's post-events are marks like a note's: `r8\f`, `r16-\f`,
+        // `r^\p`, a hairpin, and markup, placed where they are written.
+        let path = std::path::Path::new("tests/fixtures/ly/marks-on-rests.ly");
+        let score = LyToIrAdapter::new().convert_file(path).unwrap();
+        let ms = &score.parts()[0].measures;
+        let dynamics: Vec<(usize, Frac, String)> = ms
+            .iter()
+            .enumerate()
+            .flat_map(|(i, m)| {
+                m.directions.iter().filter_map(move |d| {
+                    d.dynamic
+                        .as_ref()
+                        .map(|dy| (i, d.offset, dy.sign.as_str().to_string()))
+                })
+            })
+            .collect();
+        let q = |n: i64, d: i64| Ratio::new(n, d);
+        assert_eq!(
+            dynamics,
+            vec![
+                (0, q(0, 1), "f".to_string()),
+                (0, q(1, 4), "f".to_string()),
+                (1, q(0, 1), "p".to_string()),
+            ]
+        );
+        let p = ms[1]
+            .directions
+            .iter()
+            .find(|d| d.dynamic.is_some())
+            .unwrap();
+        assert_eq!(p.placement, crate::ir::articulation::Placement::Above);
+        let wedges: Vec<(usize, String)> = ms
+            .iter()
+            .enumerate()
+            .flat_map(|(i, m)| {
+                m.directions.iter().filter_map(move |d| {
+                    d.wedge
+                        .as_ref()
+                        .map(|w| (i, w.wedge_type.as_str().to_string()))
+                })
+            })
+            .collect();
+        assert_eq!(
+            wedges,
+            vec![(1, "crescendo".to_string()), (2, "stop".to_string())]
+        );
+        let markup = ms[2]
+            .directions
+            .iter()
+            .find(|d| d.dynamic.is_some() || d.text.is_some());
+        assert!(markup.is_some(), "the markup on the rest is lost");
+        assert_eq!(markup.unwrap().offset, q(1, 4));
+    }
+
+    #[test]
+    fn test_rest_text_is_written_at_its_rest() {
+        // Voice 1 has no note at beat 2, so a bar-level direction would fall
+        // to the end of the bar; the rest's text is written beside its rest.
+        use crate::adapters::ir_to_mxml::IrToMxmlAdapter;
+        use crate::adapters::FromIrAdapter;
+        let src = r#"{ << { c''1 } \\ { c'4 r4^"Tempo primo" c'2 } >> }"#;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let xml = IrToMxmlAdapter::new().convert(&score).unwrap();
+        let at = xml.find("Tempo primo").expect("text written");
+        let next = &xml[at..][..xml[at..].find("</note>").unwrap()];
+        assert!(
+            next.contains("<rest") && next.contains("<voice>2</voice>"),
+            "the text is not before voice 2's rest: {next}"
+        );
+    }
+
+    #[test]
+    fn test_rest_text_keeps_its_staff() {
+        // Text on the lower staff's rest is written for that staff, not the
+        // upper one a direction with no <staff> would mean.
+        use crate::adapters::ir_to_mxml::IrToMxmlAdapter;
+        use crate::adapters::FromIrAdapter;
+        let src = r#"\new PianoStaff << \new Staff { c''1 } \new Staff { \clef bass c4 r4_"ad lib." c2 } >>"#;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let xml = IrToMxmlAdapter::new().convert(&score).unwrap();
+        let at = xml.find("ad lib.").expect("text written");
+        let dir = &xml[at..][..xml[at..].find("</direction>").unwrap()];
+        assert!(dir.contains("<staff>2</staff>"), "not on staff 2: {dir}");
+    }
+
+    #[test]
+    fn test_pitched_rest_keeps_its_marks() {
+        let src = r#"{ c''4\rest\p^"dolce" c''4 }"#;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let ds = &score.parts()[0].measures[0].directions;
+        assert!(ds.iter().any(|d| d.dynamic.is_some()), "dynamic lost");
+        assert!(
+            ds.iter()
+                .any(|d| d.text.as_ref().is_some_and(|t| t.text == "dolce")),
+            "text lost"
+        );
+    }
+
+    #[test]
+    fn test_scaled_spacer_marks_are_read_once() {
+        // A spacer reads its marks once, after it is pushed: `s1*7/16\fff`
+        // and `s4*1/2*3\<` each make one mark, not one per spacer.
+        let src = r#"{ \time 2/4 c''2 | << { c''2 | c''2 } \\ { s16 s1*7/16\fff | s4*1/2*3\< s8\! } >> }"#;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let marks: Vec<String> = score.parts()[0]
+            .measures
+            .iter()
+            .flat_map(|m| &m.directions)
+            .filter_map(|d| {
+                d.dynamic
+                    .as_ref()
+                    .map(|dy| dy.sign.as_str().to_string())
+                    .or_else(|| d.wedge.as_ref().map(|w| w.wedge_type.as_str().to_string()))
+            })
+            .collect();
+        assert_eq!(marks, vec!["fff", "crescendo", "stop"]);
+    }
+
+    #[test]
+    fn test_spacer_dynamics_survive() {
+        let src =
+            r#"\score { << \new Staff { c'4 d' e' f' } \new Dynamics { s4\f s\p s\< s\! } >> }"#;
+        let score = LyToIrAdapter::new().convert_str(src).unwrap();
+        let signs: Vec<String> = score
+            .parts()
+            .iter()
+            .flat_map(|p| &p.measures)
+            .flat_map(|m| &m.directions)
+            .filter_map(|d| d.dynamic.as_ref().map(|dy| dy.sign.as_str().to_string()))
+            .collect();
+        assert_eq!(signs, vec!["f".to_string(), "p".to_string()]);
+    }
+
+    #[test]
     fn test_dynamic_after_a_bar_line_is_a_direction_there() {
         let src = r#"{ c'2 r2 \bar "||" \p c'1 }"#;
         let score = LyToIrAdapter::new().convert_str(src).unwrap();

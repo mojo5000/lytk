@@ -3,6 +3,60 @@
 Dated engineering notes, newest first. The release history is in
 [changelog.md](changelog.md).
 
+## 2026-11-27 — A rest's marks
+
+Mutopia's Maple Leaf Rag (Joplin, Mutopia-2011/11/13-23) converted to
+MusicXML with 2 of its 7 dynamics: the two `mf`s, which are on chords.
+The other five are on rests (`r8 \f`, `r16-\f`, `r16^\p`, and
+`r16_\markup { \dynamic f \italic "stacc." }`), and nothing warned.
+
+- **Where they went.** `apply_rest_attachments` read only `\fermata`.
+  `Rest` already had `dynamics` and `wedges` as reader scratch, which
+  `hoist` moves into the bar's directions and `attach_dynamic` fills for
+  a dynamic standing alone after a rest, but a rest's own post-events
+  never reached them. It reads them now as `apply_note_attachments`
+  does: `^`/`_` placing the next mark, dynamics (`\f`, `dynamic:` from
+  markup), hairpins, and `text:` markup. A pitched rest copies its
+  note's text as it already copied its dynamics and hairpins.
+- **Spacers keep their own path.** A spacer reads its dynamics,
+  hairpins and fermata after it is pushed (`attach_dynamic`), but the
+  `s1*7/16` branch also called `apply_rest_attachments` on each spacer
+  it pushed. Once that read dynamics, `s1*7/16\fff` made two `fff`s and
+  `s4*1/2*3\<` four crescendos, so that call is gone.
+- **Text.** A rest had nowhere to keep text, so it gains
+  `text_directions`. `hoist` moves it out, `fold_spacer_lanes` makes it
+  directions, and `sink` puts it back on its rest (it used to answer "A
+  rest carries no text"), so the MusicXML writer emits it beside the
+  rest with its staff. Left as a bar-level direction, it was interleaved
+  into the staff's first voice only: under a whole-bar rest in voice 1,
+  `r8^\markup { Tempo primo }` in voice 2 fell to the end of the bar.
+- **The fixture.** `rest-dynamic.ly`, despite its name, puts its `\f` on
+  a note. `marks-on-rests.ly` puts every kind of mark on a rest, and
+  `test_marks_on_rests_are_directions` checks each one's bar, place and
+  placement.
+
+**Checked against a corpus.** Mutopia (5,655 `.ly` files) and LilyPond's
+`input/regression` (2,211) were converted to MusicXML with 0.6.5 and
+with this change, and each pair compared with its `<direction>`s taken
+out: 16,866 of 16,866 outputs are otherwise identical. Every file
+converts, warns and fails as before; no direction 0.6.5 wrote is lost
+or moved; 4,317 are added in 1,202 outputs (1,999 hairpins, 1,065
+dynamics, 1,253 texts), each starting where a rest does, and none
+repeating one already in its voice at its beat. The spacer double read
+and the misplaced text above were both found this way, in a first run
+against 0.6.4, where a seeded sample of 20 changed files also traced
+every added mark to a mark on a rest in the source. Round-tripped
+LilyPond is byte-identical before and after, since `ir_to_ly` writes no
+mark on a rest.
+
+Left as it was: the writer places every dynamic and hairpin below the
+staff (`build_note_direction_elements`), whatever the source says; a
+markup's `\dynamic f` reads as the text "f stacc.", not as a dynamic;
+a markup without braces (`\markup\italic "…"`) and one of glyphs only
+read as nothing, on a note as on a rest; `ir_to_ly` drops a rest's
+marks; and a spacer's marks are written after its `<forward>`, so
+`s2\p` sounds on beat 3, as before.
+
 ## 2026-11-27 — 0.6.5: what LilyPond's own MIDI of Mutopia's scores showed
 
 lilycorpus now releases every score also as MusicXML, ABC and MIDI written

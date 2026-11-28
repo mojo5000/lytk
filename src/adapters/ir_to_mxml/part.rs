@@ -82,6 +82,16 @@ impl IrToMxmlAdapter {
             };
             out.push(self.direction_element(&dir));
         }
+        // Text names its staff, as it did as a bar-level direction.
+        for td in &r.text_directions {
+            let dir = Direction {
+                text: Some(td.clone()),
+                placement: td.placement,
+                staff: r.staff,
+                ..Direction::default()
+            };
+            out.push(self.direction_element(&dir));
+        }
         out
     }
 
@@ -354,7 +364,7 @@ impl IrToMxmlAdapter {
                             // Emit dynamics/wedges attached to this spacer rest.
                             elements.extend(self.rest_direction_elements(r));
                         } else {
-                            // Emit dynamics/wedges attached to this rest.
+                            // Emit dynamics/wedges/text attached to this rest.
                             elements.extend(self.rest_direction_elements(r));
                             let rest_note = self.build_rest_note(r, voice.number, part_staves);
                             elements.push(mxml::MeasureElement::Note(rest_note));

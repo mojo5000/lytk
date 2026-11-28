@@ -7,6 +7,15 @@ engineering notes are in the [development log](devlog.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- A rest's marks are read: `r8\f`, `r16-\f`, `r4^\p`, a hairpin
+  (`r4\<`, `r4\!`) and `r4_\markup { … }` were dropped, since a rest
+  read only `\fermata`. They are directions at the rest's place now, as
+  a note's are (Joplin's Maple Leaf Rag on Mutopia lost five of its
+  seven dynamics this way). A pitched rest (`c4\rest`) keeps its text
+  too, and a rest's text is written beside it in MusicXML, on its staff.
+
 ## [0.6.5] - 2026-11-27
 
 What compiling PDMX's conversion found in the scores LilyPond 2.26 accepts
